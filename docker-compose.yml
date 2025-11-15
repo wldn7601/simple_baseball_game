@@ -1,0 +1,33 @@
+services:
+
+  db:
+    image: mysql:8.0
+    container_name: baseball_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: baseball_db
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - baseball_net
+
+  app:
+    image: wldn7601/baseball_game:latest
+    container_name: baseball_app
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY}
+    depends_on:
+      - db
+    networks:
+      - baseball_net
+
+networks:
+  baseball_net:
+
+volumes:
+  db_data:
