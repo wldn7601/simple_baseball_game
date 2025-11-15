@@ -61,9 +61,15 @@ pipeline {
             }
         }
 
-        stage('Cleanup') {
+        stage('Cleanup old images') {
             steps {
-                sh "docker image prune -f || true"
+                sh """
+                    # dangling 이미지 삭제
+                    docker image prune -f
+
+                    # 사용되지 않는 이미지 전체 삭제
+                    docker image prune -a -f || true
+                """
             }
         }
     }
