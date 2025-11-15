@@ -2,9 +2,7 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "wldn7601/baseball_game"
-        PROJECT_DIR = "/home/ubuntu/baseball_game"
-        DOCKER_COMPOSE = "/usr/bin/docker compose"  // jenkins 컨테이너에 설치된 compose 플러그인 경로
+        IMAGE = "wldn7601/simple_baseball_game"
     }
 
     stages {
@@ -15,70 +13,56 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                sh """
-                    docker build -t ${IMAGE_NAME}:latest .
-                """
-            }
-        }
-
-        stage('Login to DockerHub') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub', 
-                                                 usernameVariable: 'DOCKERHUB_USER', 
-                                                 passwordVariable: 'DOCKERHUB_PASS')]) {
-                    sh """
-                        echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USER}" --password-stdin
-                    """
-                }
-            }
-        }
-
-        stage('Push to DockerHub') {
-            steps {
-                sh """
-                    docker push ${IMAGE_NAME}:latest
-                """
-            }
-        }
-
-        stage('Deploy to Server') {
-            steps {
-                sh """
-                    cd ${PROJECT_DIR}
-
-                    # docker-compose 파일 업데이트해도 됨
-                    docker pull ${IMAGE_NAME}:latest
-
-                    ${DOCKER_COMPOSE} down
-                    ${DOCKER_COMPOSE} up -d
-                """
-            }
-        }
-
-        stage('Health Check') {
+        stage('Set Tags') {
             steps {
                 script {
-                    def status = sh(
-                        script: "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5001",
-                        returnStdout: true
-                    ).trim()
+                    env.SHORT_SHA = sh(script: "git rev-parse --short=7 HEAD", returnStdout: true).trim()
+                    env.DATE_TAG  = sh(script: "date +%Y%m%d", returnStdout: true).trim()
+                    env.BUILD_TAG = "jenkins-${env.DATE_TAG}-${env.SHORT_SHA}"
+                }
+                echo "BUILD TAG: ${env.BUILD_TAG}"
+            }
+        }
 
-                    if (status != '200') {
-                        error "Health check failed! Code=${status}"
-                    }
+        stage('Docker Login') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub',
+                                                 usernameVariable: 'DH_USER',
+                                                 passwordVariable: 'DH_PASS')]) {
+                    sh 'echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin'
                 }
             }
         }
-    }
 
-    post {
-        success {
-            echo "배포 성공!"
+        stage('Build & Push') {
+            steps {
+                sh """
+                    docker build -t ${IMAGE}:${BUILD_TAG} -t ${IMAGE}:latest .
+                    docker push ${IMAGE}:${BUILD_TAG}
+                    docker push ${IMAGE}:latest
+                """
+            }
         }
-        failure {
-            echo "배포 실패. 로그를 확인하십시오."
+
+        stage('Deploy to Kakao Cloud') {
+          steps {
+            sshagent(['kakaocloud-key-pjw']) {
+                sh '''
+                    ssh -o StrictHostKeyChecking=no ubuntu@host-10-0-0-179 "
+                        cd /home/ubuntu/baseball_game &&
+                        docker compose pull &&
+                        docker compose down &&
+                        docker compose up -d
+                    "
+                '''
+                }
+            }
+        }
+
+        stage('Cleanup') {
+            steps {
+                sh "docker image prune -f || true"
+            }
         }
     }
 }
