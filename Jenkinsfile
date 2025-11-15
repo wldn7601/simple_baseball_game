@@ -2,7 +2,9 @@ pipeline {
     agent any
 
     environment {
-        IMAGE = "wldn7601/simple_baseball_game"
+        IMAGE = "wldn7601/baseball_game"
+        COMPOSE = "/usr/bin/docker compose"
+        PROJECT_DIR = "/workspace/baseball_game"
     }
 
     stages {
